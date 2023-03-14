@@ -27,6 +27,9 @@ import { User } from '../../entities/user'
 import { Role } from '../../entities/role'
 import { DeleteUserFromProjectDto } from './dto/delete-user-from-project.dto'
 import { Stage } from '../../entities/stage'
+import { CreateStageDto } from './dto/create-stage.dto'
+import { RemoveStageDto } from './dto/delete-stage.dto'
+import { UpdateStageDto } from './dto/update-stage.dto'
 import { CreateBoardDto } from './dto/create-board.dto'
 import { UpdateBoardDto } from './dto/update-board.dto'
 
@@ -402,6 +405,15 @@ export class ProjectsService {
     }
   }
 
+  async createStage(dto: CreateStageDto): Promise<StageDto> {
+    const board = await this.getBoardIfExists(dto.projectId, dto.boardId)
+
+    const newStage = new Stage({
+      name: dto.name,
+      board: board,
+    })
+
+    const created = await this.connection.getRepository(Stage).save(newStage)
   async createBoard(dto: CreateBoardDto): Promise<BoardDto> {
     const project = await this.getProjectIfExists(dto.projectId)
 
@@ -422,6 +434,41 @@ export class ProjectsService {
     }
   }
 
+  async removeStage(dto: RemoveStageDto): Promise<void> {
+    const stage = await this.getStageIfExists(
+      dto.projectId,
+      dto.boardId,
+      dto.stageId
+    )
+
+    await this.connection.getRepository(Stage).softRemove(stage)
+  }
+
+  async updateStage(dto: UpdateStageDto): Promise<StageDto> {
+    const stage = await this.getStageIfExists(
+      dto.projectId,
+      dto.boardId,
+      dto.stageId
+    )
+
+    if (dto.name) {
+      stage.name = dto.name
+    }
+
+    const updated = await this.connection.getRepository(Stage).save(stage)
+
+    return {
+      id: updated.id,
+      name: updated.name,
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+  }
+
+  async getBoardIfExists(projectId: number, boardId: number): Promise<Board> {
+    const board = await this.connection
+      .createQueryBuilder(Board, 'board')
+      .innerJoin('board.project', 'project')
   async removeBoard(projectId: number, boardId: number): Promise<void> {
     const board = await this.connection
       .createQueryBuilder(Board, 'board')
@@ -435,6 +482,30 @@ export class ProjectsService {
       })
     }
 
+    return board
+  }
+
+  async getStageIfExists(
+    projectId: number,
+    boardId: number,
+    stageId: number
+  ): Promise<Stage> {
+    const stage = await this.connection
+      .createQueryBuilder(Stage, 'stage')
+      .innerJoin('stage.board', 'board')
+      .innerJoin('board.project', 'project')
+      .where('project.id = :projectId', { projectId })
+      .andWhere('board.id = :boardId', { boardId })
+      .andWhere('stage.id = :stageId', { stageId })
+      .getOne()
+
+    if (!stage) {
+      throw new AppException(HttpStatus.NOT_FOUND, 'Stage not found', {
+        id: stageId,
+      })
+    }
+
+    return stage
     if (board.isDefault) {
       throw new AppException(
         HttpStatus.BAD_REQUEST,
